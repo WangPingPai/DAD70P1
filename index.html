@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, orientation=landscape">
+    <title>橫屏迷宮遊戲</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden; /* 確保沒有滾動條 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f4f4f4;
+        }
+        canvas {
+            display: block;
+        }
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            display: flex;
+            justify-content: center;
+            width: 100%;
+        }
+        button {
+            width: 60px;
+            height: 60px;
+            margin: 5px;
+            font-size: 18px;
+            font-weight: bold;
+            border: 1px solid #000;
+            border-radius: 10px;
+            background-color: #ddd;
+            cursor: pointer;
+            transition: background-color 0.1s ease-in-out;
+        }
+        button:active {
+            background-color: #bbb;
+        }
+        #fullscreen-video {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: black;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="mazeCanvas"></canvas>
+    <div id="controls">
+        <button id="left">←</button>
+        <button id="up">↑</button>
+        <button id="down">↓</button>
+        <button id="right">→</button>
+    </div>
+    <audio id="backgroundMusic" src="your-audio-url.mp3" loop></audio>
+    <video id="fullscreen-video" src="your-video-url.mp4" controls></video>
+    <script>
+        const canvas = document.getElementById('mazeCanvas');
+        const ctx = canvas.getContext('2d');
+        const backgroundMusic = document.getElementById('backgroundMusic');
+        const fullscreenVideo = document.getElementById('fullscreen-video');
+
+        const cellSize = 40;
+        const cols = 10;
+        const rows = 10;
+
+        const images = {
+            player: 'player-image-url.png',
+            wall: 'wall-image-url.png',
+            ground: 'ground-image-url.jpg',
+            exit: 'exit-image-url.png'
+        };
+
+// 定義多個迷宮樣本
+        const mazes = [
+            [
+                [0, 1, 0, 0, 0, 0, 0, 0, 0, 2],
+                [0, 1, 1, 1, 1, 1, 0, 1, 1, 1],
+                [0, 0, 0, 0, 1, 0, 0, 1, 0, 0],
+                [1, 1, 1, 0, 1, 0, 1, 1, 0, 1],
+                [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+                [0, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+                [0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+                [1, 1, 1, 1, 1, 1, 0, 1, 1, 0],
+                [0, 0, 0, 0, 1, 0, 0, 0, 1, 0],
+                [0, 1, 1, 1, 1, 0, 0, 0, 0, 0]
+            ],
+            [
+                [0, 0, 0, 1, 1, 1, 1, 1, 1, 1],
+                [0, 1, 0, 0, 0, 0, 0, 0, 0, 1],
+                [1, 1, 1, 1, 1, 0, 1, 1, 0, 1],
+                [1, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+                [1, 0, 1, 0, 1, 0, 1, 1, 1, 0],
+                [0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+                [0, 1, 1, 1, 1, 1, 1, 0, 1, 1],
+                [0, 0, 0, 0, 0, 0, 0, 0, 0, 2],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+            ],
+            [
+                [0, 0, 0, 0, 0, 1, 1, 1, 1, 2],
+                [1, 1, 1, 1, 0, 1, 0, 0, 0, 0],
+                [0, 0, 0, 1, 0, 1, 1, 1, 1, 0],
+                [0, 1, 0, 1, 0, 0, 0, 1, 1, 0],
+                [0, 1, 0, 1, 1, 1, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 1, 1, 1, 1, 1],
+                [1, 1, 1, 1, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 1, 1, 1, 1, 1, 1, 0],
+                [0, 1, 0, 0, 0, 0, 0, 0, 1, 0],
+                [0, 0, 0, 1, 1, 1, 1, 1, 0, 0]
+            ]
+        ];
+
+        const maze = mazes[Math.floor(Math.random() * mazes.length)];
+
+        const player = { x: 0, y: 0 };
+
+        const loadedImages = {};
+        const loadImage = (key, src) => {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.src = src;
+                img.onload = () => {
+                    loadedImages[key] = img;
+                    resolve();
+                };
+            });
+        };
+
+        Promise.all(
+            Object.entries(images).map(([key, src]) => loadImage(key, src))
+        ).then(() => {
+            backgroundMusic.play();
+            resizeCanvas();
+            render();
+        });
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        function drawMaze() {
+            const mazeWidth = cols * cellSize;
+            const mazeHeight = rows * cellSize;
+            const scale = Math.min(canvas.width / mazeWidth, canvas.height / mazeHeight);
+
+            const offsetX = (canvas.width - mazeWidth * scale) / 2;
+            const offsetY = (canvas.height - mazeHeight * scale) / 2;
+
+            ctx.save();
+            ctx.translate(offsetX, offsetY);
+            ctx.scale(scale, scale);
+
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    if (maze[y][x] === 1) {
+                        ctx.drawImage(loadedImages.wall, x * cellSize, y * cellSize, cellSize, cellSize);
+                    } else if (maze[y][x] === 2) {
+                        ctx.drawImage(loadedImages.exit, x * cellSize, y * cellSize, cellSize, cellSize);
+                    } else {
+                        ctx.drawImage(loadedImages.ground, x * cellSize, y * cellSize, cellSize, cellSize);
+                    }
+                }
+            }
+
+            ctx.restore();
+        }
+
+        function drawPlayer() {
+            const mazeWidth = cols * cellSize;
+            const mazeHeight = rows * cellSize;
+            const scale = Math.min(canvas.width / mazeWidth, canvas.height / mazeHeight);
+
+            const offsetX = (canvas.width - mazeWidth * scale) / 2;
+            const offsetY = (canvas.height - mazeHeight * scale) / 2;
+
+            ctx.save();
+            ctx.translate(offsetX, offsetY);
+            ctx.scale(scale, scale);
+
+            ctx.drawImage(
+                loadedImages.player,
+                player.x * cellSize,
+                player.y * cellSize,
+                cellSize,
+                cellSize
+            );
+
+            ctx.restore();
+        }
+
+        function movePlayer(dx, dy) {
+            const newX = player.x + dx;
+            const newY = player.y + dy;
+            if (
+                newX >= 0 &&
+                newY >= 0 &&
+                newX < cols &&
+                newY < rows &&
+                maze[newY][newX] !== 1
+            ) {
+                player.x = newX;
+                player.y = newY;
+                render();
+
+                if (maze[newY][newX] === 2) {
+                    backgroundMusic.pause();
+                    fullscreenVideo.style.display = 'block';
+                    fullscreenVideo.play();
+                }
+            }
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawMaze();
+            drawPlayer();
+        }
+
+        document.getElementById('up').addEventListener('mousedown', () => movePlayer(0, -1));
+        document.getElementById('down').addEventListener('mousedown', () => movePlayer(0, 1));
+        document.getElementById('left').addEventListener('mousedown', () => movePlayer(-1, 0));
+        document.getElementById('right').addEventListener('mousedown', () => movePlayer(1, 0));
+
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            render();
+        });
+    </script>
+</body>
+</html>
